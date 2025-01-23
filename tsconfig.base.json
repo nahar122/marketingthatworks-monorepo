@@ -1,0 +1,32 @@
+// my-monorepo/tsconfig.base.json
+{
+  "compilerOptions": {
+    // Language Features / Emit
+    "target": "ES2020",
+    "module": "commonjs",
+
+    // Module Resolution
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    // Strictness
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    // This option can help avoid node_modules type conflicts
+    "skipLibCheck": true
+
+    // Output Directory
+    // (Sub-packages typically override "outDir" in their own tsconfig.json.)
+    // "outDir": "dist"
+  },
+
+  // We can specify files, includes, or excludes, but typically we let
+  // each sub-package handle that in its own tsconfig.json.
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "**/*.test.ts" // example: exclude tests at the base level
+  ]
+}

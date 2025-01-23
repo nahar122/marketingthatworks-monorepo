@@ -1,0 +1,32 @@
+{
+  "name": "embedding-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/body-parser": "^1.19.5",
+    "@types/express": "^5.0.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.3.1",
+    "@marketingthatworks/shared-lib": "*",
+    "body-parser": "^1.20.3",
+    "bullmq": "^5.34.10",
+    "dotenv": "^16.4.7",
+    "embedding-service": "file:",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.2",
+    "mongodb": "^6.12.0",
+    "puppeteer": "^24.1.0"
+  }
+}

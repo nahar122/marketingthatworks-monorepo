@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true
+    // If you want to skip type checks on .d.ts from node_modules:
+    // "skipLibCheck": true,
+  },
+  "include": ["src/**/*"]
+}
