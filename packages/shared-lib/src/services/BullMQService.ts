@@ -17,7 +17,7 @@ export class QueueWorkerManager {
     this.redisConnection = new IORedis({
       host: REDIS_HOST,
       port: REDIS_PORT,
-      maxRetriesPerRequest: null,
+      maxRetriesPerRequest: null
     });
     this.queues = new Map();
   }

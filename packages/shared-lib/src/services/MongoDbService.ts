@@ -16,7 +16,7 @@ export class MongoDBService {
    * Returns the singleton instance of DatabaseService.
    * @param dbName The name of the database (default "mydb")
    */
-  public static getInstance(dbName = "mydb"): MongoDBService {
+  public static getInstance(dbName = process.env.MONGO_DB_NAME ? process.env.MONGO_DB_NAME : "mydb"): MongoDBService {
     if (!MongoDBService.instance) {
       MongoDBService.instance = new MongoDBService(dbName);
     }

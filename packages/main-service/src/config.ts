@@ -16,6 +16,7 @@ export const config = {
   PORT: process.env.PORT,
   EMBEDDING_SERVICE_BASE_URL: process.env.EMBEDDING_SERVICE_BASE_URL,
   GMB_ACCOUNT_ID: process.env.GMB_ACCOUNT_ID,
+  MONGO_DB_NAME: process.env.MONGO_DB_NAME,
 };
 
 console.log("CONFIG: ", config);

@@ -10,7 +10,7 @@ export async function authMiddleware(
 ) {
   const uri = process.env.MONGO_URI!!;
 
-  const mongoDBService = MongoDBService.getInstance("mydb");
+  const mongoDBService = MongoDBService.getInstance();
   await mongoDBService.connect(uri);
   const db = mongoDBService.getDB();
   const apiKeysCol = db.collection<ApiKeyRecord>("api_keys");

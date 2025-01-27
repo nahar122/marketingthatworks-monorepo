@@ -14,11 +14,12 @@ import {
 import { MongoServerError } from "mongodb";
 import GoogleAuthService from "./services/GoogleClient";
 import { widgetRoutes } from "./routes/widget";
+import { businessRoutes } from "./routes/business";
 
 const startServer = async () => {
   const mongoUri = config.MONGO_URI;
   const port = config.PORT ? config.PORT : 3000;
-  await MongoDBService.getInstance("testdb1").connect(mongoUri);
+  await MongoDBService.getInstance().connect(mongoUri);
 
   const db = MongoDBService.getInstance().getDB();
 
@@ -106,6 +107,7 @@ const startServer = async () => {
 
   app.use("/keys", keysRoutes());
   app.use("/widget", widgetRoutes({ reviewsCol, articlesCol, mediaCol }));
+  app.use("/business", businessRoutes({reviewsCol, mediaCol}))
 
   
   app.use("/",  (req: Request, res: Response) => {
