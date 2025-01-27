@@ -1,36 +1,47 @@
-# Dockerfile for embedding-service
+# Dockerfile for main-service
 
-FROM node:18-bullseye-slim as build
+FROM node:18-bullseye-slim AS build
+
 
 # 1. Set working directory
 WORKDIR /app
 
-# 2. Copy package files for embedding-service AND shared-lib
-COPY embedding-service/package*.json ./
-COPY shared-lib/package*.json ../shared-lib/
+# 2. Copy package files for main-service AND shared-lib so npm sees both
+# COPY packages/main-service/package*.json ./main-service/
+# COPY packages/shared-lib/package*.json ./shared-lib/
 
-# 3. Copy the entire repository so Docker has both embedding-service & shared-lib code
-COPY . /app
+COPY ./package.json .
+COPY ./tsconfig.base.json .
+COPY ./packages/embedding-service ./packages/embedding-service
+COPY ./packages/shared-lib ./packages/shared-lib
 
-# 4. Switch into the embedding-service folder; install dependencies (including the local file reference to ../shared-lib)
-WORKDIR /app/embedding-service
 RUN npm install
 
-# 5. Build the shared-lib, then build the embedding-service
-RUN cd ../shared-lib && npm run build
-RUN npm run build
+RUN npm run build:shared-lib
+RUN npm run build:embedding-service
+
+
+# 3. Copy the entire repository (so Docker sees both main-service and shared-lib code)
+# COPY . /app
+
+# 4. Move into main-service folder, install dependencies including local reference to ../shared-lib
+# WORKDIR /app/packages/main-service
+# RUN npm install
+
+# 5. Build the shared-lib, then build the main-service
+# RUN cd ../shared-lib && npm run build
+# RUN npm run build
 
 # ---------- Production stage ----------
-FROM node:18-bullseye-slim
+FROM node:18-bullseye-slim AS prod
 WORKDIR /app
 
-# 6. Copy the compiled artifacts and node_modules from the build stage
-COPY --from=build /app/embedding-service/node_modules ./node_modules
-COPY --from=build /app/embedding-service/dist ./dist
+# Copy built artifacts from build stage
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/embedding-service/dist ./embedding-service-dist
+COPY --from=build /app/packages/shared-lib/dist ./node_modules/@marketingthatworks/shared-lib
+# COPY ./packages/main-service/marketingthatworks-service-acc.json ./marketingthatworks-service-acc.json
 
-# If you also need the compiled shared-lib code at runtime,
-# you could copy it as well:
-# COPY --from=build /app/shared-lib/dist ../shared-lib/dist
-
-EXPOSE 4000
-CMD ["node", "dist/server.js"]
+EXPOSE 3000
+CMD ["node", "embedding-service-dist/server.js"]
+# CMD ["-f","/dev/null"]

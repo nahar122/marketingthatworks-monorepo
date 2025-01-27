@@ -1,4 +1,5 @@
-import express from "express";
+import cors from "cors";
+import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 import { config } from "./config";
 import { keysRoutes } from "./routes/keys";
@@ -97,13 +98,23 @@ const startServer = async () => {
   google.options({ auth: googleAuthClient });
 
   const app = express();
+  app.use(cors())
   app.use(bodyParser.json());
 
+
   // Routes
+
   app.use("/keys", keysRoutes());
   app.use("/widget", widgetRoutes({ reviewsCol, articlesCol, mediaCol }));
 
-  app.listen(3000, () => {
+  
+  app.use("/",  (req: Request, res: Response) => {
+    console.log("[server] Successfully hit root endpoint")
+    res.status(200).json({message: "sucess"})
+    return
+  })
+
+  app.listen(3000, '0.0.0.0', () => {
     console.log(`[main-service] Listening on port ${port}...`);
   });
 };
