@@ -8,6 +8,8 @@ export async function scrapePage(url: string): Promise<ScrapeResult> {
     browser = await puppeteer.launch({
       headless: true, // or 'true' if 'new' not supported in your Puppeteer version
       // If you're running in Docker or a server environment, you might need:
+      executablePath: "/usr/bin/google-chrome-stable",
+      defaultViewport: null,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();

@@ -38,8 +38,7 @@ app.use(bodyParser.json());
 // -----------------------------------------------------
 //  Connect to MongoDB
 // -----------------------------------------------------
-const dbName = config.MONGO_DB_NAME ? config.MONGO_DB_NAME : "mydb";
-const mongoService = MongoDBService.getInstance(dbName);
+const mongoService = MongoDBService.getInstance();
 
 mongoService
   .connect(config.MONGO_URI)
@@ -87,65 +86,71 @@ async function loadModels() {
 // -----------------------------------------------------
 //  Initialize Queue Manager & Article Queue + Worker
 // -----------------------------------------------------
-const qm = QueueWorkerManager.getInstance(config.REDIS_HOST, config.REDIS_PORT);
-
 const ARTICLE_QUEUE_NAME = "articleQueue";
+try{
 
-// 1) Create the queue if not already existing
-try {
+  const qm = QueueWorkerManager.getInstance(config.REDIS_HOST, config.REDIS_PORT);
+
+
+
+  // 1) Create the queue if not already existing
+
   qm.createQueue(ARTICLE_QUEUE_NAME);
+
+  
+  // 2) Create the worker (for articles)
+
+  qm.createWorker(ARTICLE_QUEUE_NAME, async (job) => {
+    // This function runs inside the worker whenever a new article job is processed
+    const { jobId } = job.data;
+    console.log(`[ArticleWorker] Received job for URL: ${jobId}`);
+  
+    // 2a) Check if we already have an article in DB
+    const db = mongoService.getDB();
+    const articlesColl = db.collection<Article>("articles");
+    const existing = await articlesColl.findOne({ url: jobId });
+  
+    if (existing?.embedding?.length) {
+      console.log(
+        `[ArticleWorker] URL ${jobId} already has embeddings. Skipping...`
+      );
+      return;
+    }
+  
+    // 2b) Scrape the article
+    const scrapeResult = await scrapePage(jobId);
+    const rawText = scrapeResult.textContent || "";
+  
+    // 2c) Generate embeddings
+    if (!textModelLoaded || !textTokenizerLoaded) {
+      await loadModels();
+    }
+    const textEmb = await getTextEmbeddings(
+      rawText,
+      textModelLoaded!!,
+      textTokenizerLoaded!!
+    );
+    console.log(`[ArticleWorker] Embeddings generated for: ${jobId}`);
+  
+    // 2d) Store in Mongo
+    await articlesColl.updateOne(
+      { url: jobId },
+      {
+        $set: {
+          url: jobId,
+          content: rawText,
+          embedding: textEmb,
+        },
+      },
+      { upsert: true }
+    );
+  
+    console.log(`[ArticleWorker] Article updated in DB: ${jobId}`);
+  });
 } catch (err: any) {
   console.log(`[server] Note: ${err.message}`);
 }
 
-// 2) Create the worker (for articles)
-qm.createWorker(ARTICLE_QUEUE_NAME, async (job) => {
-  // This function runs inside the worker whenever a new article job is processed
-  const { articleURL } = job.data;
-  console.log(`[ArticleWorker] Received job for URL: ${articleURL}`);
-
-  // 2a) Check if we already have an article in DB
-  const db = mongoService.getDB();
-  const articlesColl = db.collection<Article>("articles");
-  const existing = await articlesColl.findOne({ url: articleURL });
-
-  if (existing?.embedding?.length) {
-    console.log(
-      `[ArticleWorker] URL ${articleURL} already has embeddings. Skipping...`
-    );
-    return;
-  }
-
-  // 2b) Scrape the article
-  const scrapeResult = await scrapePage(articleURL);
-  const rawText = scrapeResult.textContent || "";
-
-  // 2c) Generate embeddings
-  if (!textModelLoaded || !textTokenizerLoaded) {
-    await loadModels();
-  }
-  const textEmb = await getTextEmbeddings(
-    rawText,
-    textModelLoaded!!,
-    textTokenizerLoaded!!
-  );
-  console.log(`[ArticleWorker] Embeddings generated for: ${articleURL}`);
-
-  // 2d) Store in Mongo
-  await articlesColl.updateOne(
-    { url: articleURL },
-    {
-      $set: {
-        url: articleURL,
-        content: rawText,
-        embedding: textEmb,
-      },
-    },
-    { upsert: true }
-  );
-
-  console.log(`[ArticleWorker] Article updated in DB: ${articleURL}`);
-});
 
 // -----------------------------------------------------
 //  Routes
@@ -158,23 +163,25 @@ qm.createWorker(ARTICLE_QUEUE_NAME, async (job) => {
  */
 app.post("/embed/media", async (req: Request, res: Response) => {
   // Body can be { items: MediaItem[] } or a single MediaItem
-  const { items } = req.body;
+  const { mediaItems } = req.body;
   const db = mongoService.getDB();
   const mediaColl = db.collection<MediaItem>("mediaitems");
 
-  let mediaArray: MediaItem[] = [];
-  if (Array.isArray(items)) {
-    mediaArray = items;
-  } else {
-    // Single item
-    mediaArray = [items];
+  if (!mediaItems){
+    res.status(400).json({message: "Missing 'mediaItems' array from request body."})
+    return
   }
 
+  let mediaArray: MediaItem[] = [];
+  if (!Array.isArray(mediaItems)) {
+    res.status(400).json({message: "The 'mediaItems' body argument must be an array."})
+    return
+  } 
+
   try {
-    // (Optionally) load your image model if needed
-    // if (!imageModelLoaded || !imageProcessorLoaded) {
-    //   await loadImageModel();
-    // }
+    if (!imageModelLoaded || !imageProcessorLoaded) {
+      await loadModels();
+    }
 
     for await (const media of mediaArray) {
       const existingMedia = await mediaColl.findOne({
@@ -188,11 +195,15 @@ app.post("/embed/media", async (req: Request, res: Response) => {
       }
 
       // For example, embed using googleUrl or thumbnailUrl
-      const imageUrl = media.googleUrl || media.thumbnailUrl || "";
+      const imageUrl = media.googleUrl;
+      if(!imageUrl){
+        console.log(`[embed/media] Media item does not have a valid googleUrl ${media}`)
+        continue
+      }
       // In real usage, you might do:
       // const imageEmb = await getImageEmbeddings(imageUrl, imageModelLoaded, imageProcessorLoaded);
       // Mock the imageEmb for now
-      const imageEmb = [`embedding_for_${imageUrl}`];
+      const imageEmb = await getImageEmbeddings(imageUrl, imageModelLoaded!!, imageProcessorLoaded!!)
 
       await mediaColl.updateOne(
         { _id: new ObjectId(media._id) },
@@ -220,15 +231,23 @@ app.post("/embed/media", async (req: Request, res: Response) => {
  * POST /embed/review
  * Accepts either a single review or an array of reviews in the request body.
  */
-app.post("/embed/review", async (req: Request, res: Response) => {
+app.post("/embed/reviews", async (req: Request, res: Response) => {
   // Body can be { reviews: Review[] } or a single Review
+
+  console.log(`[/embed/reviews] Endpoint hit!`)
   const { reviews } = req.body;
   const db = mongoService.getDB();
   const reviewColl = db.collection<Review>("reviews");
 
   let reviewArray: Review[] = [];
-  if (Array.isArray(reviews)) {
-    reviewArray = reviews;
+  if(!reviews){
+    res.status(400).json({message: "Missing 'reviews' array from request body."})
+    return
+  }
+
+  if (!Array.isArray(reviews)) {
+    res.status(400).json({message: "The 'reviews' body argument must be an array."})
+    return
   }
 
   try {
@@ -307,12 +326,15 @@ app.post("/embed/article", async (req: Request, res: Response) => {
     // or just rely on your DB "in-progress" status approach.
 
     // For simplicity, let's just queue it:
+    const qm = QueueWorkerManager.getInstance(config.REDIS_HOST, config.REDIS_PORT);
+
     const isJobInQueue = await qm.isJobInQueue(ARTICLE_QUEUE_NAME, articleURL);
     if (isJobInQueue) {
       console.log(
         `[Article] Job with ID: ${articleURL}, for URL: ${articleURL} already exists. Ignoring request.`
       );
       res.status(200).json({ message: "Job already in queue", articleURL });
+      return
     }
     const jobId = await qm.addJob(ARTICLE_QUEUE_NAME, { jobId: articleURL });
     console.log(
