@@ -30,11 +30,17 @@ export async function getImageEmbeddings(
   imageModel: CLIPVisionModelWithProjection,
   processor: Processor
 ) {
+
+  if(!processor){
+    console.log("NO PROCESSOR FOUND")
+  }
   const image = await RawImage.fromURL(url);
 
   const imageInputs = await processor(image);
 
   const { image_embeds } = await imageModel(imageInputs);
 
-  return image_embeds;
+  
+
+  return Array.from(image_embeds.ort_tensor.cpuData);
 }

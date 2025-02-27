@@ -4,7 +4,6 @@ import { authMiddleware } from "../middleware/auth";
 import { getImagesFromGMB, getReviewsFromGMB } from "../utils/helpers"
 import { MediaItem, Review } from "@marketingthatworks/shared-lib";
 import { Collection } from "mongodb";
-import { CLIPTextModelWithProjection, CLIPVisionModelWithProjection, PreTrainedTokenizer, Processor } from "@huggingface/transformers";
 import { config } from "../config";
 import axios from "axios";
 
@@ -109,7 +108,7 @@ export function businessRoutes(deps: BusinessRoutesDeps) {
             );
 
             if( !(embedMediaItemsResponse.status === 200) ){
-                res.status(500).json({message: "Failed to embed reviews", error: embedMediaItemsResponse.data.error})
+                res.status(500).json({message: embedMediaItemsResponse.data.message, error: embedMediaItemsResponse.data.error})
                 return
             }
 
@@ -117,7 +116,7 @@ export function businessRoutes(deps: BusinessRoutesDeps) {
             return
         } catch (error: any) {
             console.log("ERROR CREATING MEDIA ITEMS IN DB: ", error)
-            res.json({message: "success", error: error})
+            res.status(500).json({message: "failure", error: error})
             return
           }
     })

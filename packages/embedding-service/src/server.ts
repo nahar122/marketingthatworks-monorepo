@@ -24,139 +24,133 @@ import {
   // CLIPModel, CLIPVisionModelWithProjection, etc...
   CLIPVisionModelWithProjection,
   CLIPTextModelWithProjection,
-  Processor,
+  AutoProcessor,
   AutoTokenizer,
   PreTrainedTokenizer,
+  Processor,
 } from "@huggingface/transformers";
 
-// -----------------------------------------------------
-//  Initialize Express
-// -----------------------------------------------------
-const app = express();
-app.use(bodyParser.json());
 
-// -----------------------------------------------------
-//  Connect to MongoDB
-// -----------------------------------------------------
-const mongoService = MongoDBService.getInstance();
 
-mongoService
-  .connect(config.MONGO_URI)
-  .then(() => {
-    console.log("[server] MongoDB connected.");
-  })
-  .catch((err) => {
-    console.error("[server] MongoDB connection error:", err);
-    process.exit(1);
-  });
+const ARTICLE_QUEUE_NAME = "articleQueue";
 
-// -----------------------------------------------------
-//  Load / Initialize Models Once (Optional)
-// -----------------------------------------------------
-let textModelLoaded: CLIPTextModelWithProjection | null = null;
-let textTokenizerLoaded: PreTrainedTokenizer | null = null;
-let imageModelLoaded: CLIPVisionModelWithProjection | null = null;
-let imageProcessorLoaded: Processor | null = null;
+var textModel: CLIPTextModelWithProjection;
+var textTokenizer: PreTrainedTokenizer;
+var imageModel: CLIPVisionModelWithProjection;
+var imageProcessor: AutoProcessor;
 
 async function loadModels() {
-  if (!textModelLoaded || !textTokenizerLoaded) {
-    console.log("[server] Loading text model + tokenizer...");
-    textTokenizerLoaded = await AutoTokenizer.from_pretrained(
-      "Xenova/clip-vit-base-patch32"
-    );
-    textModelLoaded = await CLIPTextModelWithProjection.from_pretrained(
-      "Xenova/clip-vit-base-patch32"
-    );
-    console.log("[server] Text models loaded.");
-  }
-
-  if (!imageModelLoaded || !imageProcessorLoaded) {
-    console.log("[server] Loading image model + processor ...");
-    imageModelLoaded = await CLIPVisionModelWithProjection.from_pretrained(
-      "Xenova/clip-vit-base-patch32"
-    );
-    imageProcessorLoaded = await Processor.from_pretrained(
-      "Xenova/clip-vit-base-patch32",
-      {}
-    );
-    console.log("[server] Image models loaded");
-  }
-}
-
-// -----------------------------------------------------
-//  Initialize Queue Manager & Article Queue + Worker
-// -----------------------------------------------------
-const ARTICLE_QUEUE_NAME = "articleQueue";
-try{
-
-  const qm = QueueWorkerManager.getInstance(config.REDIS_HOST, config.REDIS_PORT);
 
 
+    if(!textModel || !textTokenizer){
 
-  // 1) Create the queue if not already existing
-
-  qm.createQueue(ARTICLE_QUEUE_NAME);
-
-  
-  // 2) Create the worker (for articles)
-
-  qm.createWorker(ARTICLE_QUEUE_NAME, async (job) => {
-    // This function runs inside the worker whenever a new article job is processed
-    const { jobId } = job.data;
-    console.log(`[ArticleWorker] Received job for URL: ${jobId}`);
-  
-    // 2a) Check if we already have an article in DB
-    const db = mongoService.getDB();
-    const articlesColl = db.collection<Article>("articles");
-    const existing = await articlesColl.findOne({ url: jobId });
-  
-    if (existing?.embedding?.length) {
-      console.log(
-        `[ArticleWorker] URL ${jobId} already has embeddings. Skipping...`
+      console.log("[embedding-service] Loading text model + tokenizer...");
+      textTokenizer = await AutoTokenizer.from_pretrained(
+        "Xenova/clip-vit-base-patch32"
       );
-      return;
+      textModel = await CLIPTextModelWithProjection.from_pretrained(
+        "Xenova/clip-vit-base-patch32"
+      );
+      console.log("[embedding-service] Text models loaded.");
     }
   
-    // 2b) Scrape the article
-    const scrapeResult = await scrapePage(jobId);
-    const rawText = scrapeResult.textContent || "";
   
-    // 2c) Generate embeddings
-    if (!textModelLoaded || !textTokenizerLoaded) {
-      await loadModels();
+
+    if(!imageModel || imageProcessor) {
+
+      console.log("[embedding-service] Loading image model + processor ...");
+      imageModel = await CLIPVisionModelWithProjection.from_pretrained(
+        "Xenova/clip-vit-base-patch32"
+      );
+      imageProcessor = await AutoProcessor.from_pretrained(
+        "Xenova/clip-vit-base-patch32", {
+          
+        }
+      );
+      console.log("[embedding-service] Image models loaded");
     }
-    const textEmb = await getTextEmbeddings(
-      rawText,
-      textModelLoaded!!,
-      textTokenizerLoaded!!
-    );
-    console.log(`[ArticleWorker] Embeddings generated for: ${jobId}`);
   
-    // 2d) Store in Mongo
-    await articlesColl.updateOne(
-      { url: jobId },
-      {
-        $set: {
-          url: jobId,
-          content: rawText,
-          embedding: textEmb,
-        },
-      },
-      { upsert: true }
-    );
-  
-    console.log(`[ArticleWorker] Article updated in DB: ${jobId}`);
-  });
-} catch (err: any) {
-  console.log(`[server] Note: ${err.message}`);
 }
 
 
-// -----------------------------------------------------
-//  Routes
-// -----------------------------------------------------
+const startServer = async () => {
+  // -----------------------------------------------------
+  //  Initialize Express
+  // -----------------------------------------------------
+  const app = express();
+  app.use(bodyParser.json());
 
-/**
+  // -----------------------------------------------------
+  //  Connect to MongoDB
+  // -----------------------------------------------------
+
+  const mongoService = MongoDBService.getInstance();
+  await mongoService.connect(config.MONGO_URI)
+  console.log("[embedding-service] MongoDB connected.");
+
+
+  try{
+    await loadModels()
+    console.log(`[embedding-service] All models successfully loaded.`)
+  } catch (error: any) {
+    console.log(`[embedding-service] Error occured when trying to load models: ${error}`)
+  }
+
+  try{
+    const qm = QueueWorkerManager.getInstance(config.REDIS_HOST, config.REDIS_PORT);
+    qm.createQueue(ARTICLE_QUEUE_NAME);
+    qm.createWorker(ARTICLE_QUEUE_NAME, async (job) => {
+      // This function runs inside the worker whenever a new article job is processed
+      const { jobId } = job.data;
+      console.log(`[ArticleWorker] Received job for URL: ${jobId}`);
+    
+      // 2a) Check if we already have an article in DB
+      const db = mongoService.getDB();
+      const articlesColl = db.collection<Article>("articles");
+      const existing = await articlesColl.findOne({ url: jobId });
+    
+      if (existing?.embedding?.length) {
+        console.log(
+          `[ArticleWorker] URL ${jobId} already has embeddings. Skipping...`
+        );
+        return;
+      }
+    
+      // 2b) Scrape the article
+      const scrapeResult = await scrapePage(jobId);
+      const rawText = scrapeResult.textContent || "";
+  
+      const textEmb = await getTextEmbeddings(
+        rawText,
+        textModel,
+        textTokenizer
+      );
+      console.log(`[ArticleWorker] Embeddings generated for: ${jobId}`);
+    
+      // 2d) Store in Mongo
+      await articlesColl.updateOne(
+        { url: jobId },
+        {
+          $set: {
+            url: jobId,
+            content: rawText,
+            embedding: textEmb,
+          },
+        },
+        { upsert: true }
+      );
+    
+      console.log(`[ArticleWorker] Article updated in DB: ${jobId}`);
+    });
+
+  } catch (error: any) {
+
+  }
+
+
+
+
+  /**
  * POST /embed/media
  * Accepts either a single media item or an array of media items in the request body.
  * We'll embed the "googleUrl" or "thumbnailUrl" to represent the image.
@@ -165,7 +159,7 @@ app.post("/embed/media", async (req: Request, res: Response) => {
   // Body can be { items: MediaItem[] } or a single MediaItem
   const { mediaItems } = req.body;
   const db = mongoService.getDB();
-  const mediaColl = db.collection<MediaItem>("mediaitems");
+  const mediaCol = db.collection<MediaItem>("media_items");
 
   if (!mediaItems){
     res.status(400).json({message: "Missing 'mediaItems' array from request body."})
@@ -179,12 +173,11 @@ app.post("/embed/media", async (req: Request, res: Response) => {
   } 
 
   try {
-    if (!imageModelLoaded || !imageProcessorLoaded) {
-      await loadModels();
-    }
+    mediaArray = mediaItems
+    await loadModels();
 
     for await (const media of mediaArray) {
-      const existingMedia = await mediaColl.findOne({
+      const existingMedia = await mediaCol.findOne({
         _id: new ObjectId(media._id),
       });
 
@@ -200,12 +193,10 @@ app.post("/embed/media", async (req: Request, res: Response) => {
         console.log(`[embed/media] Media item does not have a valid googleUrl ${media}`)
         continue
       }
-      // In real usage, you might do:
-      // const imageEmb = await getImageEmbeddings(imageUrl, imageModelLoaded, imageProcessorLoaded);
-      // Mock the imageEmb for now
-      const imageEmb = await getImageEmbeddings(imageUrl, imageModelLoaded!!, imageProcessorLoaded!!)
 
-      await mediaColl.updateOne(
+      const imageEmb = await getImageEmbeddings(imageUrl, imageModel, imageProcessor as Processor)
+
+      await mediaCol.updateOne(
         { _id: new ObjectId(media._id) },
         {
           $set: {
@@ -250,10 +241,12 @@ app.post("/embed/reviews", async (req: Request, res: Response) => {
     return
   }
 
+  
+  console.log(`[/embed/reviews] Reviews: ${reviews}`)
+
   try {
-    if (!textModelLoaded || !textTokenizerLoaded) {
-      await loadModels();
-    }
+    reviewArray = reviews
+    await loadModels();
 
     for await (const rv of reviewArray) {
       const existingReview = await reviewColl.findOne({
@@ -270,9 +263,9 @@ app.post("/embed/reviews", async (req: Request, res: Response) => {
         continue;
       }
       const textEmb = await getTextEmbeddings(
-        rv.comment || "",
-        textModelLoaded!!,
-        textTokenizerLoaded!!
+        rv.comment,
+        textModel,
+        textTokenizer
       );
 
       await reviewColl.updateOne(
@@ -358,15 +351,17 @@ app.post("/embed/article", async (req: Request, res: Response) => {
 //  Start the Express Server
 // -----------------------------------------------------
 app.listen(config.PORT ? parseInt(config.PORT, 10) : 4000, async () => {
-  console.log(
-    `[server] Listening on port ${
-      config.PORT ? parseInt(config.PORT, 10) : 4000
-    }`
-  );
   await loadModels(); // Preload models so they're in memory
   console.log(
     `[server] Listening for requests on port ${
       config.PORT ? config.PORT : 4000
     }`
   );
+});
+
+}
+
+startServer().catch((err) => {
+  console.error("Failed to start embedding-service:", err);
+  process.exit(1);
 });

@@ -66,7 +66,7 @@ const startServer = async () => {
 
   try {
     const createMediaSearchIndexCommand = await db.command({
-      createSearchIndexes: "media", // collection name
+      createSearchIndexes: "media_items", // collection name
       indexes: [
         {
           name: "embeddingIndex",

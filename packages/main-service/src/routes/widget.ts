@@ -211,7 +211,7 @@ export function widgetRoutes(deps: WidgetRoutesDeps): Router {
 
 function generateCarouselWidgetHTML(reviews: Review[]) {
   // Use the relative URL to your static file
-  const imageUrl = "./public/images/review-icon.webp";
+  const imageUrl = "https://marketingthatworks-public.s3.us-east-1.amazonaws.com/review-icon.webp";
 
   // Chunk reviews into groups of three
   const chunkedReviews = [];
@@ -348,8 +348,8 @@ function generateCarouselWidgetHTML(reviews: Review[]) {
   </div>
 </div>
 <div class="google-review-controls">
-  <button id="google-review-prev"><img src="./public/images/arrow-left-circle.svg" alt="left-arrow.svg" /></button>
-  <button id="google-review-next"><img src="./public/images/arrow-right-circle.svg" alt="right-arrow.svg" /></button>
+  <button id="google-review-prev"><img src="https://marketingthatworks-public.s3.us-east-1.amazonaws.com/arrow-left-circle.svg" alt="left-arrow.svg" /></button>
+  <button id="google-review-next"><img src="https://marketingthatworks-public.s3.us-east-1.amazonaws.com/arrow-right-circle.svg" alt="right-arrow.svg" /></button>
 </div>
 <script>
   (function() {
@@ -523,10 +523,10 @@ function generateCarouselWidgetHTMLForMediaItems(mediaItems: MediaItem[]) {
     <!-- Arrows are absolutely positioned over the carousel -->
     <div class="google-review-controls">
       <button id="google-review-prev">
-        <img src="./public/images/arrow-left-circle.svg" alt="left-arrow.svg" />
+        <img src="https://marketingthatworks-public.s3.us-east-1.amazonaws.com/arrow-left-circle.svg" alt="left-arrow.svg" />
       </button>
       <button id="google-review-next">
-        <img src="./public/images/arrow-right-circle.svg" alt="right-arrow.svg" />
+        <img src="https://marketingthatworks-public.s3.us-east-1.amazonaws.com/arrow-right-circle.svg" />
       </button>
     </div>
   </div>
